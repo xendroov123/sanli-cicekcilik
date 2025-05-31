@@ -12,21 +12,21 @@ export default async function HomePage() {
   // Kategorileri getir
   const { data: categories } = await supabase.from("categories").select("*").eq("is_active", true).order("sort_order")
 
-  // Öne çıkan ürünleri getir
+  // Öne çıkan ürünleri getir - 4'ten 8'e çıkarın
   const { data: featuredProducts } = await supabase
     .from("products")
     .select("*")
     .eq("is_featured", true)
     .eq("is_active", true)
-    .limit(4)
+    .limit(8)
 
-  // Tüm ürünleri getir
+  // Tüm ürünleri getir - 8'den 12'ye çıkarın
   const { data: allProducts } = await supabase
     .from("products")
     .select("*")
     .eq("is_active", true)
     .order("created_at", { ascending: false })
-    .limit(8)
+    .limit(12)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-rose-50 to-white">

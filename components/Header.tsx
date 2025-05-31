@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useRouter } from "next/navigation"
 import { useCartStore } from "@/store/cart"
+import Link from "next/link"
+import { useToast } from "@/hooks/use-toast"
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -17,6 +19,7 @@ export default function Header() {
   const supabase = createClient()
   const router = useRouter()
   const { getTotalItems } = useCartStore()
+  const { toast } = useToast()
 
   useEffect(() => {
     // Auth state'ini dinle
@@ -56,8 +59,12 @@ export default function Header() {
             <span>Ücretsiz Kargo - Aynı Gün Teslimat</span>
           </div>
           <div className="hidden md:flex items-center gap-4">
-            <span>Sipariş Takibi</span>
-            <span>Bize Ulaşın</span>
+            <Link href="/order-tracking" className="hover:text-emerald-200">
+              Sipariş Takibi
+            </Link>
+            <Link href="/contact" className="hover:text-emerald-200">
+              Bize Ulaşın
+            </Link>
           </div>
         </div>
       </div>
@@ -68,9 +75,11 @@ export default function Header() {
           <div className="flex items-center justify-between py-4">
             {/* Logo */}
             <div className="flex items-center">
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-rose-500 bg-clip-text text-transparent">
-                🌸 Şanlı Çiçekçilik
-              </h1>
+              <Link href="/" className="flex items-center">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-rose-500 bg-clip-text text-transparent cursor-pointer">
+                  🌸 Şanlı Çiçekçilik
+                </h1>
+              </Link>
             </div>
 
             {/* Search Bar - Desktop */}
@@ -105,7 +114,18 @@ export default function Header() {
                   <DropdownMenuContent>
                     <DropdownMenuItem onClick={() => router.push("/profile")}>Profilim</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push("/orders")}>Siparişlerim</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => supabase.auth.signOut()}>Çıkış Yap</DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        await supabase.auth.signOut()
+                        router.push("/")
+                        toast({
+                          title: "Çıkış yapıldı",
+                          description: "Başarıyla çıkış yaptınız.",
+                        })
+                      }}
+                    >
+                      Çıkış Yap
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
