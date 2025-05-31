@@ -1,13 +1,36 @@
 "use client"
 
-import { useState } from "react"
-import { Search, ShoppingCart, User, Menu, X, Phone, Heart } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Search, ShoppingCart, UserIcon, Menu, X, Phone, Heart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { createClient } from "@/lib/supabase/client"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useRouter } from "next/navigation"
+import { useCartStore } from "@/store/cart"
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [user, setUser] = useState(null)
+  const [cartItemCount, setCartItemCount] = useState(0)
+  const supabase = createClient()
+  const router = useRouter()
+  const { getTotalItems } = useCartStore()
+
+  useEffect(() => {
+    // Auth state'ini dinle
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    // Sepet item sayısını güncelle
+    setCartItemCount(getTotalItems())
+
+    return () => subscription.unsubscribe()
+  }, [supabase.auth, getTotalItems])
 
   const categories = [
     "Çiçek Sepeti",
@@ -71,10 +94,31 @@ export default function Header() {
 
             {/* Right Icons */}
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" className="hidden md:flex items-center gap-2">
-                <User className="w-5 h-5" />
-                <span>Giriş</span>
-              </Button>
+              {user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="hidden md:flex items-center gap-2">
+                      <UserIcon className="w-5 h-5" />
+                      <span>{user.user_metadata?.first_name || "Hesabım"}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => router.push("/profile")}>Profilim</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push("/orders")}>Siparişlerim</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => supabase.auth.signOut()}>Çıkış Yap</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="hidden md:flex items-center gap-2"
+                  onClick={() => router.push("/auth/login")}
+                >
+                  <UserIcon className="w-5 h-5" />
+                  <span>Giriş</span>
+                </Button>
+              )}
 
               <Button variant="ghost" size="sm" className="relative">
                 <Heart className="w-5 h-5" />
@@ -83,11 +127,13 @@ export default function Header() {
                 </span>
               </Button>
 
-              <Button variant="ghost" size="sm" className="relative">
+              <Button variant="ghost" size="sm" className="relative" onClick={() => router.push("/cart")}>
                 <ShoppingCart className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  2
-                </span>
+                {cartItemCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {cartItemCount}
+                  </span>
+                )}
               </Button>
 
               {/* Mobile Menu Button */}

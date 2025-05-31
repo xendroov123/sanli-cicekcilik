@@ -10,11 +10,7 @@ export default async function HomePage() {
   const supabase = createClient()
 
   // Kategorileri getir
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("*")
-    .order("sort_order", { ascending: true })
-    .eq("is_active", true)
+  const { data: categories } = await supabase.from("categories").select("*").eq("is_active", true).order("sort_order")
 
   // Öne çıkan ürünleri getir
   const { data: featuredProducts } = await supabase
@@ -24,12 +20,12 @@ export default async function HomePage() {
     .eq("is_active", true)
     .limit(4)
 
-  // Çok satan ürünleri getir
-  const { data: bestsellerProducts } = await supabase
+  // Tüm ürünleri getir
+  const { data: allProducts } = await supabase
     .from("products")
     .select("*")
-    .eq("is_bestseller", true)
     .eq("is_active", true)
+    .order("created_at", { ascending: false })
     .limit(8)
 
   return (
@@ -37,18 +33,22 @@ export default async function HomePage() {
       <Header />
       <main>
         <Hero />
-        <CategorySlider categories={categories || []} />
-        <ProductGrid
-          products={featuredProducts || []}
-          title="⭐ Öne Çıkan Ürünler"
-          description="En beğenilen ve çok satan çiçek aranjmanlarımızı keşfedin"
-        />
+        {categories && <CategorySlider categories={categories} />}
+        {featuredProducts && (
+          <ProductGrid
+            products={featuredProducts}
+            title="⭐ Öne Çıkan Ürünler"
+            description="En beğenilen ve çok satan çiçek aranjmanlarımızı keşfedin"
+          />
+        )}
         <PromotionBanners />
-        <ProductGrid
-          products={bestsellerProducts || []}
-          title="🌸 Çok Satan Ürünler"
-          description="Geniş çiçek koleksiyonumuzdan sevdikleriniz için en güzel seçimi yapın"
-        />
+        {allProducts && (
+          <ProductGrid
+            products={allProducts}
+            title="🌸 Tüm Ürünlerimiz"
+            description="Geniş çiçek koleksiyonumuzdan sevdikleriniz için en güzel seçimi yapın"
+          />
+        )}
       </main>
       <Footer />
     </div>
