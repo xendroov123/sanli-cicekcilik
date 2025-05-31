@@ -43,7 +43,7 @@ export default function CheckoutPage() {
     expiryDate: "",
     cvv: "",
     cardName: "",
-    paymentMethod: "credit-card",
+    paymentMethod: "cash-on-delivery",
   })
 
   useEffect(() => {
@@ -61,12 +61,15 @@ export default function CheckoutPage() {
       setUser(user)
 
       if (user) {
+        // Get profile data
+        const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
+
         setShippingData((prev) => ({
           ...prev,
-          firstName: user.user_metadata?.first_name || "",
-          lastName: user.user_metadata?.last_name || "",
+          firstName: profile?.first_name || user.user_metadata?.first_name || "",
+          lastName: profile?.last_name || user.user_metadata?.last_name || "",
           email: user.email || "",
-          phone: user.user_metadata?.phone || "",
+          phone: profile?.phone || user.user_metadata?.phone || "",
         }))
       }
     }
@@ -88,29 +91,91 @@ export default function CheckoutPage() {
     e.preventDefault()
     setIsProcessing(true)
 
-    // Simulate payment processing
-    setTimeout(async () => {
-      try {
-        // Create order in database (simplified)
-        const orderNumber = `SAN${Date.now()}`
-
+    try {
+      if (!user) {
         toast({
-          title: "Ödeme Başarılı! 🎉",
-          description: `Sipariş numaranız: ${orderNumber}`,
-        })
-
-        clearCart()
-        router.push(`/order-success?order=${orderNumber}`)
-      } catch (error) {
-        toast({
-          title: "Ödeme Hatası",
-          description: "Bir hata oluştu, lütfen tekrar deneyin.",
+          title: "Hata",
+          description: "Sipariş vermek için giriş yapmalısınız.",
           variant: "destructive",
         })
-      } finally {
-        setIsProcessing(false)
+        router.push("/auth/login")
+        return
       }
-    }, 3000)
+
+      // Create order number
+      const orderNumber = `SAN${Date.now()}`
+
+      // Create shipping address
+      const shippingAddress = {
+        firstName: shippingData.firstName,
+        lastName: shippingData.lastName,
+        address: shippingData.address,
+        city: shippingData.city,
+        district: shippingData.district,
+        postalCode: shippingData.postalCode,
+      }
+
+      // Create order in database
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          user_id: user.id,
+          order_number: orderNumber,
+          status: "pending",
+          payment_status: paymentData.paymentMethod === "cash-on-delivery" ? "pending" : "paid",
+          payment_method: paymentData.paymentMethod,
+          subtotal: subtotal,
+          tax_amount: tax,
+          shipping_amount: shipping,
+          discount_amount: 0,
+          total_amount: total,
+          currency: "TRY",
+          shipping_address: shippingAddress,
+          shipping_address_text: `${shippingData.firstName} ${shippingData.lastName}, ${shippingData.address}, ${shippingData.district}/${shippingData.city}`,
+          phone: shippingData.phone,
+          notes: shippingData.notes,
+        })
+        .select()
+        .single()
+
+      if (orderError) {
+        throw orderError
+      }
+
+      // Create order items
+      const orderItems = items.map((item) => ({
+        order_id: order.id,
+        product_id: item.id,
+        product_name: item.name,
+        product_image: item.image,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.price * item.quantity,
+      }))
+
+      const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
+
+      if (itemsError) {
+        throw itemsError
+      }
+
+      toast({
+        title: "Sipariş Başarılı! 🎉",
+        description: `Sipariş numaranız: ${orderNumber}`,
+      })
+
+      clearCart()
+      router.push(`/order-success?order=${orderNumber}`)
+    } catch (error) {
+      console.error("Order creation error:", error)
+      toast({
+        title: "Sipariş Hatası",
+        description: "Sipariş oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const handleInputChange = (section: string, field: string, value: string) => {
@@ -317,19 +382,19 @@ export default function CheckoutPage() {
                       <Label className="text-gray-700 mb-2 block">Ödeme Yöntemi</Label>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div
-                          className={`border-2 rounded-lg p-4 cursor-pointer ${paymentData.paymentMethod === "credit-card" ? "border-emerald-500 bg-emerald-50" : "border-gray-200"}`}
-                          onClick={() => handleInputChange("payment", "paymentMethod", "credit-card")}
+                          className={`border-2 rounded-lg p-4 cursor-pointer opacity-50 ${paymentData.paymentMethod === "credit-card" ? "border-emerald-500 bg-emerald-50" : "border-gray-200"}`}
                         >
-                          <CreditCard className="w-6 h-6 mb-2 text-emerald-600" />
-                          <p className="font-medium">Kredi Kartı</p>
+                          <CreditCard className="w-6 h-6 mb-2 text-gray-400" />
+                          <p className="font-medium text-gray-400">Kredi Kartı</p>
+                          <p className="text-xs text-gray-400">Yakında</p>
                         </div>
 
                         <div
-                          className={`border-2 rounded-lg p-4 cursor-pointer ${paymentData.paymentMethod === "debit-card" ? "border-emerald-500 bg-emerald-50" : "border-gray-200"}`}
-                          onClick={() => handleInputChange("payment", "paymentMethod", "debit-card")}
+                          className={`border-2 rounded-lg p-4 cursor-pointer opacity-50 ${paymentData.paymentMethod === "debit-card" ? "border-emerald-500 bg-emerald-50" : "border-gray-200"}`}
                         >
-                          <CreditCard className="w-6 h-6 mb-2 text-emerald-600" />
-                          <p className="font-medium">Banka Kartı</p>
+                          <CreditCard className="w-6 h-6 mb-2 text-gray-400" />
+                          <p className="font-medium text-gray-400">Banka Kartı</p>
+                          <p className="text-xs text-gray-400">Yakında</p>
                         </div>
 
                         <div
@@ -338,66 +403,19 @@ export default function CheckoutPage() {
                         >
                           <Truck className="w-6 h-6 mb-2 text-emerald-600" />
                           <p className="font-medium">Kapıda Ödeme</p>
+                          <p className="text-xs text-emerald-600">Aktif</p>
                         </div>
                       </div>
                     </div>
 
-                    {paymentData.paymentMethod !== "cash-on-delivery" && (
-                      <>
-                        <div>
-                          <Label htmlFor="cardName" className="text-gray-700 mb-2 block">
-                            Kart Üzerindeki İsim *
-                          </Label>
-                          <Input
-                            id="cardName"
-                            value={paymentData.cardName}
-                            onChange={(e) => handleInputChange("payment", "cardName", e.target.value)}
-                            placeholder="JOHN DOE"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <Label htmlFor="cardNumber" className="text-gray-700 mb-2 block">
-                            Kart Numarası *
-                          </Label>
-                          <Input
-                            id="cardNumber"
-                            value={paymentData.cardNumber}
-                            onChange={(e) => handleInputChange("payment", "cardNumber", e.target.value)}
-                            placeholder="1234 5678 9012 3456"
-                            required
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="expiryDate" className="text-gray-700 mb-2 block">
-                              Son Kullanma Tarihi *
-                            </Label>
-                            <Input
-                              id="expiryDate"
-                              value={paymentData.expiryDate}
-                              onChange={(e) => handleInputChange("payment", "expiryDate", e.target.value)}
-                              placeholder="MM/YY"
-                              required
-                            />
-                          </div>
-
-                          <div>
-                            <Label htmlFor="cvv" className="text-gray-700 mb-2 block">
-                              CVV *
-                            </Label>
-                            <Input
-                              id="cvv"
-                              value={paymentData.cvv}
-                              onChange={(e) => handleInputChange("payment", "cvv", e.target.value)}
-                              placeholder="123"
-                              required
-                            />
-                          </div>
-                        </div>
-                      </>
+                    {paymentData.paymentMethod === "cash-on-delivery" && (
+                      <div className="bg-blue-50 rounded-lg p-4">
+                        <h3 className="font-semibold text-blue-800 mb-2">💰 Kapıda Ödeme</h3>
+                        <p className="text-blue-700 text-sm">
+                          Siparişiniz teslim edilirken nakit olarak ödeme yapabilirsiniz. Kurye ile irtibata geçerek
+                          ödeme detaylarını konuşabilirsiniz.
+                        </p>
+                      </div>
                     )}
 
                     <div className="flex items-center gap-4">
@@ -407,15 +425,15 @@ export default function CheckoutPage() {
 
                       <Button
                         type="submit"
-                        disabled={isProcessing}
-                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-lg"
+                        disabled={isProcessing || paymentData.paymentMethod !== "cash-on-delivery"}
+                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-lg disabled:opacity-50"
                       >
                         {isProcessing ? (
                           "İşleniyor..."
                         ) : (
                           <>
                             <Shield className="w-5 h-5 mr-2" />
-                            Ödemeyi Tamamla
+                            Siparişi Tamamla
                           </>
                         )}
                       </Button>
@@ -479,9 +497,9 @@ export default function CheckoutPage() {
                 <div className="mt-6 p-4 bg-green-50 rounded-lg">
                   <div className="flex items-center gap-2 text-green-700">
                     <Shield className="w-5 h-5" />
-                    <span className="font-medium">Güvenli Ödeme</span>
+                    <span className="font-medium">Güvenli Sipariş</span>
                   </div>
-                  <p className="text-sm text-green-600 mt-1">256-bit SSL şifreleme ile korunmaktadır</p>
+                  <p className="text-sm text-green-600 mt-1">Bilgileriniz güvenli şekilde saklanmaktadır</p>
                 </div>
               </div>
             </div>

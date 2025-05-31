@@ -2,52 +2,116 @@
 
 import type React from "react"
 
-import { useState } from "react"
-import { Search, Package, Truck, CheckCircle, Clock } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
+import { Search, Package, Truck, CheckCircle, Clock, AlertCircle } from "lucide-react"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { createClient } from "@/lib/supabase/client"
+import { formatPrice } from "@/lib/utils"
 
 export default function OrderTrackingPage() {
   const [orderNumber, setOrderNumber] = useState("")
   const [email, setEmail] = useState("")
   const [orderData, setOrderData] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
+  const searchParams = useSearchParams()
+  const supabase = createClient()
 
-  const handleTrackOrder = async (e: React.FormEvent) => {
-    e.preventDefault()
+  useEffect(() => {
+    const orderParam = searchParams.get("order")
+    if (orderParam) {
+      setOrderNumber(orderParam)
+      handleTrackOrder(null, orderParam)
+    }
+  }, [searchParams])
+
+  const handleTrackOrder = async (e: React.FormEvent | null, orderNum?: string) => {
+    if (e) e.preventDefault()
     setIsLoading(true)
 
-    // Simulate API call
-    setTimeout(() => {
-      if (orderNumber === "SAN2024001") {
-        setOrderData({
-          orderNumber: "SAN2024001",
-          status: "delivered",
-          items: [
-            { name: "Şanlı Gül Buketi", quantity: 1, price: 199.99 },
-            { name: "Pembe Orkide", quantity: 1, price: 349.99 },
-          ],
-          total: 549.98,
-          timeline: [
-            { status: "ordered", date: "2024-01-15 10:30", completed: true },
-            { status: "preparing", date: "2024-01-15 11:00", completed: true },
-            { status: "shipped", date: "2024-01-15 14:30", completed: true },
-            { status: "delivered", date: "2024-01-15 16:45", completed: true },
-          ],
-        })
-      } else {
+    const searchOrderNumber = orderNum || orderNumber
+
+    try {
+      const { data: order, error } = await supabase
+        .from("orders")
+        .select(
+          `
+          *,
+          order_items (
+            id,
+            product_name,
+            product_image,
+            quantity,
+            price,
+            total
+          )
+        `,
+        )
+        .eq("order_number", searchOrderNumber)
+        .single()
+
+      if (error || !order) {
         setOrderData(null)
+      } else {
+        // Create timeline based on order status
+        const timeline = [
+          {
+            status: "pending",
+            title: "Sipariş Alındı",
+            date: new Date(order.created_at).toLocaleString("tr-TR"),
+            completed: true,
+          },
+          {
+            status: "confirmed",
+            title: "Sipariş Onaylandı",
+            date: order.status !== "pending" ? new Date(order.updated_at).toLocaleString("tr-TR") : null,
+            completed: ["confirmed", "preparing", "shipped", "delivered"].includes(order.status),
+          },
+          {
+            status: "preparing",
+            title: "Hazırlanıyor",
+            date: order.status === "preparing" ? new Date(order.updated_at).toLocaleString("tr-TR") : null,
+            completed: ["preparing", "shipped", "delivered"].includes(order.status),
+          },
+          {
+            status: "shipped",
+            title: "Kargoya Verildi",
+            date: order.status === "shipped" ? new Date(order.updated_at).toLocaleString("tr-TR") : null,
+            completed: ["shipped", "delivered"].includes(order.status),
+          },
+          {
+            status: "delivered",
+            title: "Teslim Edildi",
+            date:
+              order.status === "delivered"
+                ? new Date(order.delivered_at || order.updated_at).toLocaleString("tr-TR")
+                : null,
+            completed: order.status === "delivered",
+          },
+        ]
+
+        setOrderData({
+          ...order,
+          timeline,
+        })
       }
+    } catch (error) {
+      console.error("Error tracking order:", error)
+      setOrderData(null)
+    } finally {
       setIsLoading(false)
-    }, 1500)
+    }
   }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "ordered":
+      case "pending":
+        return <AlertCircle className="w-6 h-6" />
+      case "confirmed":
         return <Package className="w-6 h-6" />
       case "preparing":
         return <Clock className="w-6 h-6" />
@@ -60,18 +124,20 @@ export default function OrderTrackingPage() {
     }
   }
 
-  const getStatusText = (status: string) => {
+  const getOverallStatus = (status: string) => {
     switch (status) {
-      case "ordered":
-        return "Sipariş Alındı"
+      case "pending":
+        return { text: "Sipariş Alındı", color: "text-orange-600", bgColor: "bg-orange-100" }
+      case "confirmed":
+        return { text: "Sipariş Onaylandı", color: "text-blue-600", bgColor: "bg-blue-100" }
       case "preparing":
-        return "Hazırlanıyor"
+        return { text: "Hazırlanıyor", color: "text-yellow-600", bgColor: "bg-yellow-100" }
       case "shipped":
-        return "Kargoya Verildi"
+        return { text: "Kargoda", color: "text-blue-600", bgColor: "bg-blue-100" }
       case "delivered":
-        return "Teslim Edildi"
+        return { text: "Teslim Edildi", color: "text-green-600", bgColor: "bg-green-100" }
       default:
-        return "Bilinmiyor"
+        return { text: "Bilinmiyor", color: "text-gray-600", bgColor: "bg-gray-100" }
     }
   }
 
@@ -84,7 +150,7 @@ export default function OrderTrackingPage() {
           <div className="max-w-2xl mx-auto">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-gray-800 mb-4">📦 Sipariş Takibi</h1>
-              <p className="text-lg text-gray-600">Sipariş numaranız ve e-posta adresinizle siparişinizi takip edin</p>
+              <p className="text-lg text-gray-600">Sipariş numaranız ile siparişinizi takip edin</p>
             </div>
 
             <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
@@ -98,22 +164,7 @@ export default function OrderTrackingPage() {
                     type="text"
                     value={orderNumber}
                     onChange={(e) => setOrderNumber(e.target.value)}
-                    placeholder="Örn: SAN2024001"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="email" className="text-gray-700 mb-2 block">
-                    E-posta Adresi
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ornek@email.com"
+                    placeholder="Örn: SAN1234567890"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg"
                     required
                   />
@@ -137,21 +188,17 @@ export default function OrderTrackingPage() {
                   )}
                 </Button>
               </form>
-
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-700">
-                  💡 <strong>Test için:</strong> Sipariş numarası olarak "SAN2024001" yazın
-                </p>
-              </div>
             </div>
 
             {orderData && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <div className="text-center mb-8">
-                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Sipariş #{orderData.orderNumber}</h2>
-                  <div className="inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-full">
-                    <CheckCircle className="w-5 h-5 mr-2" />
-                    Teslim Edildi
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Sipariş #{orderData.order_number}</h2>
+                  <div
+                    className={`inline-flex items-center px-4 py-2 ${getOverallStatus(orderData.status).bgColor} ${getOverallStatus(orderData.status).color} rounded-full`}
+                  >
+                    {getStatusIcon(orderData.status)}
+                    <span className="ml-2 font-medium">{getOverallStatus(orderData.status).text}</span>
                   </div>
                 </div>
 
@@ -168,43 +215,79 @@ export default function OrderTrackingPage() {
                         </div>
                         <div className="flex-1">
                           <p className={`font-medium ${step.completed ? "text-gray-800" : "text-gray-400"}`}>
-                            {getStatusText(step.status)}
+                            {step.title}
                           </p>
-                          <p className={`text-sm ${step.completed ? "text-gray-600" : "text-gray-400"}`}>{step.date}</p>
+                          <p className={`text-sm ${step.completed ? "text-gray-600" : "text-gray-400"}`}>
+                            {step.date || "Beklemede"}
+                          </p>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Order Items */}
+                {/* Order Details */}
                 <div className="border-t border-gray-200 pt-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Sipariş Detayları</h3>
-                  <div className="space-y-3">
-                    {orderData.items.map((item, index) => (
+
+                  {/* Items */}
+                  <div className="space-y-3 mb-6">
+                    {orderData.order_items?.map((item, index) => (
                       <div key={index} className="flex justify-between items-center">
-                        <div>
-                          <p className="font-medium text-gray-800">{item.name}</p>
-                          <p className="text-sm text-gray-600">Adet: {item.quantity}</p>
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={item.product_image || "/placeholder.svg?height=50&width=50"}
+                            alt={item.product_name}
+                            className="w-12 h-12 object-cover rounded-lg"
+                          />
+                          <div>
+                            <p className="font-medium text-gray-800">{item.product_name}</p>
+                            <p className="text-sm text-gray-600">Adet: {item.quantity}</p>
+                          </div>
                         </div>
-                        <p className="font-medium text-gray-800">₺{item.price}</p>
+                        <p className="font-medium text-gray-800">{formatPrice(item.total)}</p>
                       </div>
                     ))}
-                    <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
-                      <p className="text-lg font-bold text-gray-800">Toplam</p>
-                      <p className="text-lg font-bold text-emerald-600">₺{orderData.total}</p>
+                  </div>
+
+                  {/* Totals */}
+                  <div className="border-t border-gray-200 pt-4 space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Ara Toplam</span>
+                      <span>{formatPrice(orderData.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Kargo</span>
+                      <span>{formatPrice(orderData.shipping_amount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">KDV</span>
+                      <span>{formatPrice(orderData.tax_amount)}</span>
+                    </div>
+                    <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
+                      <span className="text-lg font-bold text-gray-800">Toplam</span>
+                      <span className="text-lg font-bold text-emerald-600">{formatPrice(orderData.total_amount)}</span>
                     </div>
                   </div>
+
+                  {/* Shipping Address */}
+                  {orderData.shipping_address_text && (
+                    <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                      <h4 className="font-semibold text-gray-800 mb-2">Teslimat Adresi</h4>
+                      <p className="text-gray-600">{orderData.shipping_address_text}</p>
+                      {orderData.phone && <p className="text-gray-600 mt-1">Tel: {orderData.phone}</p>}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {orderNumber && email && !orderData && !isLoading && (
+            {orderNumber && !orderData && !isLoading && (
               <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
                 <div className="text-6xl mb-4">❌</div>
                 <h3 className="text-xl font-semibold text-gray-800 mb-2">Sipariş Bulunamadı</h3>
                 <p className="text-gray-600">
-                  Girdiğiniz bilgilere ait bir sipariş bulunamadı. Lütfen bilgilerinizi kontrol edin.
+                  Girdiğiniz sipariş numarasına ait bir sipariş bulunamadı. Lütfen sipariş numaranızı kontrol edin.
                 </p>
               </div>
             )}

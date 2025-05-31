@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Package, Truck, CheckCircle, Clock, Eye } from "lucide-react"
+import { Package, Truck, CheckCircle, Clock, Eye, AlertCircle } from "lucide-react"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
 import { Button } from "@/components/ui/button"
@@ -31,38 +31,30 @@ export default function OrdersPage() {
 
         setUser(user)
 
-        // Mock orders data - in real app, fetch from database
-        const mockOrders = [
-          {
-            id: 1,
-            order_number: "SAN2024001",
-            status: "delivered",
-            total_amount: 549.98,
-            created_at: "2024-01-15T10:30:00Z",
-            items: [
-              { name: "Şanlı Gül Buketi", quantity: 1, price: 199.99 },
-              { name: "Pembe Orkide", quantity: 1, price: 349.99 },
-            ],
-          },
-          {
-            id: 2,
-            order_number: "SAN2024002",
-            status: "shipped",
-            total_amount: 299.99,
-            created_at: "2024-01-20T14:15:00Z",
-            items: [{ name: "Karma Çiçek Sepeti", quantity: 1, price: 299.99 }],
-          },
-          {
-            id: 3,
-            order_number: "SAN2024003",
-            status: "preparing",
-            total_amount: 179.99,
-            created_at: "2024-01-22T09:45:00Z",
-            items: [{ name: "Beyaz Lilyum Buketi", quantity: 1, price: 179.99 }],
-          },
-        ]
+        // Get real orders from database
+        const { data: ordersData, error } = await supabase
+          .from("orders")
+          .select(
+            `
+            *,
+            order_items (
+              id,
+              product_name,
+              product_image,
+              quantity,
+              price,
+              total
+            )
+          `,
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
 
-        setOrders(mockOrders)
+        if (error) {
+          console.error("Error fetching orders:", error)
+        } else {
+          setOrders(ordersData || [])
+        }
       } catch (error) {
         console.error("Error fetching orders:", error)
       } finally {
@@ -75,6 +67,10 @@ export default function OrdersPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
+      case "pending":
+        return <AlertCircle className="w-5 h-5 text-orange-500" />
+      case "confirmed":
+        return <Package className="w-5 h-5 text-blue-500" />
       case "preparing":
         return <Clock className="w-5 h-5 text-yellow-500" />
       case "shipped":
@@ -88,6 +84,10 @@ export default function OrdersPage() {
 
   const getStatusText = (status: string) => {
     switch (status) {
+      case "pending":
+        return "Beklemede"
+      case "confirmed":
+        return "Onaylandı"
       case "preparing":
         return "Hazırlanıyor"
       case "shipped":
@@ -101,6 +101,10 @@ export default function OrdersPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case "pending":
+        return "bg-orange-100 text-orange-800"
+      case "confirmed":
+        return "bg-blue-100 text-blue-800"
       case "preparing":
         return "bg-yellow-100 text-yellow-800"
       case "shipped":
@@ -189,20 +193,20 @@ export default function OrdersPage() {
                     {/* Order Items */}
                     <div className="border-t border-gray-200 pt-4">
                       <div className="space-y-3">
-                        {order.items.map((item, index) => (
+                        {order.order_items?.map((item, index) => (
                           <div key={index} className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                               <img
-                                src="/placeholder.svg?height=50&width=50"
-                                alt={item.name}
+                                src={item.product_image || "/placeholder.svg?height=50&width=50"}
+                                alt={item.product_name}
                                 className="w-12 h-12 object-cover rounded-lg"
                               />
                               <div>
-                                <p className="font-medium text-gray-800">{item.name}</p>
+                                <p className="font-medium text-gray-800">{item.product_name}</p>
                                 <p className="text-sm text-gray-600">Adet: {item.quantity}</p>
                               </div>
                             </div>
-                            <p className="font-medium text-gray-800">{formatPrice(item.price)}</p>
+                            <p className="font-medium text-gray-800">{formatPrice(item.total)}</p>
                           </div>
                         ))}
                       </div>
@@ -210,6 +214,21 @@ export default function OrdersPage() {
                       <div className="border-t border-gray-200 mt-4 pt-4 flex justify-between items-center">
                         <span className="text-lg font-bold text-gray-800">Toplam</span>
                         <span className="text-lg font-bold text-emerald-600">{formatPrice(order.total_amount)}</span>
+                      </div>
+                    </div>
+
+                    {/* Payment Method */}
+                    <div className="border-t border-gray-200 mt-4 pt-4">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <span>Ödeme Yöntemi:</span>
+                        <span className="font-medium">
+                          {order.payment_method === "cash-on-delivery" ? "Kapıda Ödeme" : "Kredi Kartı"}
+                        </span>
+                        <Badge
+                          className={`ml-2 ${order.payment_status === "paid" ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}`}
+                        >
+                          {order.payment_status === "paid" ? "Ödendi" : "Beklemede"}
+                        </Badge>
                       </div>
                     </div>
 
@@ -229,10 +248,7 @@ export default function OrdersPage() {
                           size="sm"
                           onClick={() => {
                             // Add items to cart for reorder
-                            order.items.forEach((item) => {
-                              // This would use the cart store to add items
-                            })
-                            router.push("/cart")
+                            router.push("/")
                           }}
                         >
                           Tekrar Sipariş Ver
